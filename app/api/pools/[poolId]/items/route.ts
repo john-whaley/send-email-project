@@ -1,0 +1,136 @@
+import { Prisma, Role } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { fail, getErrorMessage, ok } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
+import { itemDataSchema } from "@/lib/validators";
+import { asRecord, getItemDisplayName, normalizeItemData } from "@/lib/resource";
+import { toInt } from "@/lib/utils";
+
+type RouteContext = {
+  params: Promise<{ poolId: string }>;
+};
+
+async function assertUniqueFields(
+  poolId: number,
+  data: Record<string, unknown>,
+  excludeItemId?: number
+) {
+  const pool = await prisma.pool.findUnique({
+    where: { id: poolId },
+    include: { fields: true, items: true }
+  });
+
+  if (!pool) {
+    throw new Error("池子不存在");
+  }
+
+  for (const field of pool.fields.filter((candidate) => candidate.unique)) {
+    const value = data[field.fieldName];
+
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+
+    const duplicated = pool.items.find((item) => {
+      const itemData = asRecord(item.data);
+      return item.id !== excludeItemId && String(itemData[field.fieldName] ?? "") === String(value);
+    });
+
+    if (duplicated) {
+      throw new Error(`${field.label || field.fieldName} 已存在`);
+    }
+  }
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return fail("未登录", 401);
+  }
+
+  const { poolId } = await context.params;
+  const id = toInt(poolId);
+
+  if (!id) {
+    return fail("无效池子 ID");
+  }
+
+  const url = new URL(request.url);
+  const query = url.searchParams.get("q")?.trim().toLowerCase();
+
+  const pool = await prisma.pool.findUnique({
+    where: { id },
+    include: {
+      fields: { orderBy: { sortOrder: "asc" } },
+      items: { orderBy: { updatedAt: "desc" } }
+    }
+  });
+
+  if (!pool) {
+    return fail("池子不存在", 404);
+  }
+
+  const items = query
+    ? pool.items.filter((item) => JSON.stringify(item.data).toLowerCase().includes(query))
+    : pool.items;
+
+  return ok({
+    pool: {
+      id: pool.id,
+      name: pool.name,
+      slug: pool.slug,
+      description: pool.description,
+      fields: pool.fields
+    },
+    items: items.map((item) => ({
+      ...item,
+      displayName: getItemDisplayName(item, pool.fields)
+    }))
+  });
+}
+
+export async function POST(request: Request, context: RouteContext) {
+  try {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return fail("未登录", 401);
+    }
+
+    if (user.role !== Role.ADMIN) {
+      return fail("无权限", 403);
+    }
+
+    const { poolId } = await context.params;
+    const id = toInt(poolId);
+
+    if (!id) {
+      return fail("无效池子 ID");
+    }
+
+    const pool = await prisma.pool.findUnique({
+      where: { id },
+      include: { fields: { orderBy: { sortOrder: "asc" } } }
+    });
+
+    if (!pool) {
+      return fail("池子不存在", 404);
+    }
+
+    const input = itemDataSchema.parse(await request.json());
+    const data = normalizeItemData(pool.fields, input.data);
+    await assertUniqueFields(id, data);
+
+    const item = await prisma.poolItem.create({
+      data: {
+        poolId: id,
+        data: data as Prisma.InputJsonValue
+      }
+    });
+
+    return ok({ item: { ...item, displayName: getItemDisplayName(item, pool.fields) } }, { status: 201 });
+  } catch (error) {
+    return fail(getErrorMessage(error));
+  }
+}

@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum FieldType {
+  TEXT
+  PASSWORD
+  NUMBER
+  BOOLEAN
+  DATE
+  URL
+  EMAIL
+  PHONE
+  JSON
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  createdRelations Relation[] @relation("RelationCreator")
+
+  @@map("users")
+}
+
+model Pool {
+  id          Int         @id @default(autoincrement())
+  name        String      @unique
+  slug        String      @unique
+  description String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  fields      PoolField[]
+  items       PoolItem[]
+
+  sourceRelations Relation[] @relation("SourcePool")
+  targetRelations Relation[] @relation("TargetPool")
+
+  @@map("pools")
+}
+
+model PoolField {
+  id        Int       @id @default(autoincrement())
+  poolId    Int       @map("pool_id")
+  fieldName String    @map("field_name")
+  label     String?
+  fieldType FieldType @default(TEXT) @map("field_type")
+  required  Boolean   @default(false)
+  unique    Boolean   @default(false)
+  sortOrder Int       @default(0) @map("sort_order")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  pool Pool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  @@unique([poolId, fieldName])
+  @@map("pool_fields")
+}
+
+model PoolItem {
+  id        Int      @id @default(autoincrement())
+  poolId    Int      @map("pool_id")
+  data      Json     @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  pool            Pool       @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  sourceRelations Relation[] @relation("SourceItem")
+  targetRelations Relation[] @relation("TargetItem")
+
+  @@index([poolId])
+  @@map("pool_items")
+}
+
+model Relation {
+  id           Int      @id @default(autoincrement())
+  sourcePoolId Int      @map("source_pool_id")
+  sourceItemId Int      @map("source_item_id")
+  targetPoolId Int      @map("target_pool_id")
+  targetItemId Int      @map("target_item_id")
+  note         String?
+  createdById  Int?     @map("created_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  sourcePool Pool     @relation("SourcePool", fields: [sourcePoolId], references: [id], onDelete: Cascade)
+  sourceItem PoolItem @relation("SourceItem", fields: [sourceItemId], references: [id], onDelete: Cascade)
+  targetPool Pool     @relation("TargetPool", fields: [targetPoolId], references: [id], onDelete: Cascade)
+  targetItem PoolItem @relation("TargetItem", fields: [targetItemId], references: [id], onDelete: Cascade)
+  createdBy  User?    @relation("RelationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([sourcePoolId, sourceItemId, targetPoolId, targetItemId])
+  @@index([sourcePoolId, sourceItemId])
+  @@index([targetPoolId, targetItemId])
+  @@map("relations")
+}
