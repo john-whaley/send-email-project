@@ -103,7 +103,7 @@ TEXT, PASSWORD, NUMBER, BOOLEAN, DATE, URL, EMAIL, PHONE, JSON
 
 ## Docker 部署
 
-修改 `docker-compose.yml` 中的 `JWT_SECRET` 和数据库密码，然后启动：
+复制 `.env.example` 为 `.env`，修改 `JWT_SECRET`、`NEXTAUTH_SECRET` 和数据库密码，然后启动：
 
 ```bash
 docker compose up -d --build
@@ -114,6 +114,20 @@ docker compose up -d --build
 ```bash
 docker compose exec app npm run db:seed
 ```
+
+Docker 启动时会自动执行 Prisma Migration：
+
+```bash
+npx prisma migrate deploy
+```
+
+PostgreSQL 使用独立容器和命名 volume：
+
+```text
+resource_pool_postgres_data
+```
+
+只执行 `docker compose down`、`docker compose build`、`docker compose up -d` 不会删除数据库数据。完整 VPS、Nginx、SSL、备份和恢复流程见 [docs/deployment.md](docs/deployment.md)。
 
 ## VPS + PM2 部署
 

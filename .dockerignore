@@ -6,3 +6,4 @@ npm-debug.log
 postgres-data
 coverage
 .git
+backups

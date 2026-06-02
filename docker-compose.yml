@@ -4,15 +4,15 @@ services:
     container_name: resource-pool-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: resource_pool
-      POSTGRES_PASSWORD: resource_pool_password
-      POSTGRES_DB: resource_pool
+      POSTGRES_USER: ${POSTGRES_USER:-resource_pool}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-resource_pool_password}
+      POSTGRES_DB: ${POSTGRES_DB:-resource_pool}
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U resource_pool -d resource_pool"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-resource_pool} -d $${POSTGRES_DB:-resource_pool}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,12 +25,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://resource_pool:resource_pool_password@db:5432/resource_pool?schema=public
-      JWT_SECRET: replace-with-a-long-random-secret
-      NEXT_PUBLIC_APP_NAME: Resource Pool Management System
+      DATABASE_URL: postgresql://${POSTGRES_USER:-resource_pool}:${POSTGRES_PASSWORD:-resource_pool_password}@db:5432/${POSTGRES_DB:-resource_pool}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-secret}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-replace-with-a-long-random-secret}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Resource Pool Management System}
     ports:
       - "3000:3000"
-    command: sh -c "npx prisma migrate deploy && npm run start"
 
 volumes:
-  postgres-data:
+  postgres_data:
+    name: resource_pool_postgres_data
