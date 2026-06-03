@@ -12,8 +12,10 @@
 - CSV、XLS、XLSX 批量导入
 - 任意资源池之间的通用关联关系
 - 主池/副池双向关联查询
+- 已关联对象 / 未关联对象双列表
+- 未关联对象搜索、分页、单个关联、批量关联
 - 全局搜索资源及其关联对象
-- Docker、VPS、Nginx、PM2 部署文件
+- Docker Compose、Nginx、Let's Encrypt SSL 部署方案
 
 ## 技术栈
 
@@ -40,10 +42,10 @@ npm install
 cp .env.example .env
 ```
 
-3. 启动 PostgreSQL：
+3. 启动本地 PostgreSQL 容器：
 
 ```bash
-docker compose up -d db
+docker compose up -d postgres
 ```
 
 4. 执行迁移和种子数据：
@@ -92,7 +94,7 @@ http://localhost:3000
 - `users`：用户与角色
 - `pools`：资源池类型
 - `pool_fields`：动态字段配置
-- `pool_items`：资源实体，业务数据存储在 JSONB
+- `pool_items`：资源实体，业务数据存储在 PostgreSQL JSONB
 - `relations`：任意两个资源之间的通用关联
 
 字段类型：
@@ -101,87 +103,182 @@ http://localhost:3000
 TEXT, PASSWORD, NUMBER, BOOLEAN, DATE, URL, EMAIL, PHONE, JSON
 ```
 
-## Docker 部署
+## 生产部署架构
 
-复制 `.env.example` 为 `.env`，修改 `JWT_SECRET`、`NEXTAUTH_SECRET` 和数据库密码，然后启动：
+生产环境统一采用 Docker Compose：
+
+```text
+VPS
+Docker Engine
+Docker Compose
+Nginx
+Let's Encrypt SSL
+PostgreSQL Container
+Next.js Container
+```
+
+数据库必须独立运行在 PostgreSQL 容器中。项目禁止使用 SQLite，禁止把数据库放在应用容器内部。
+
+Docker Compose 服务结构：
+
+```yaml
+services:
+  app:
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+```
+
+## Docker Compose 部署
+
+复制环境变量：
+
+```bash
+cp .env.example .env
+```
+
+修改 `.env`：
+
+```text
+JWT_SECRET="replace-with-a-long-random-secret"
+NEXTAUTH_SECRET="replace-with-a-long-random-secret"
+POSTGRES_PASSWORD="replace-db-password"
+```
+
+启用 Docker 开机自启动：
+
+```bash
+sudo systemctl enable docker
+```
+
+标准启动命令：
 
 ```bash
 docker compose up -d --build
 ```
 
-首次启动后写入种子数据：
+应用容器启动时会自动执行 Prisma Migration：
+
+```bash
+npx prisma migrate deploy
+```
+
+首次部署后写入种子数据：
 
 ```bash
 docker compose exec app npm run db:seed
 ```
 
-Docker 启动时会自动执行 Prisma Migration：
-
-```bash
-npx prisma migrate deploy
-```
-
-PostgreSQL 使用独立容器和命名 volume：
+访问：
 
 ```text
-resource_pool_postgres_data
+http://server-ip:3000
 ```
 
-只执行 `docker compose down`、`docker compose build`、`docker compose up -d` 不会删除数据库数据。完整 VPS、Nginx、SSL、备份和恢复流程见 [docs/deployment.md](docs/deployment.md)。
+完整 VPS、Nginx、SSL、备份和恢复流程见 [docs/deployment.md](docs/deployment.md)。
 
-## VPS + PM2 部署
+## 数据安全说明
 
-1. 安装 Node.js 22、PostgreSQL、Nginx、PM2。
-
-2. 创建数据库：
-
-```bash
-sudo -u postgres psql
-CREATE USER resource_pool WITH PASSWORD 'replace-db-password';
-CREATE DATABASE resource_pool OWNER resource_pool;
-\q
-```
-
-3. 配置 `.env`：
+PostgreSQL 数据保存在 Docker Volume：
 
 ```text
-DATABASE_URL="postgresql://resource_pool:replace-db-password@127.0.0.1:5432/resource_pool?schema=public"
-JWT_SECRET="replace-with-a-long-random-secret"
-NEXT_PUBLIC_APP_NAME="资源池管理平台"
+postgres_data
 ```
 
-4. 构建并迁移：
+下面操作不会删除数据库数据：
 
 ```bash
-npm install
-npx prisma migrate deploy
-npm run db:seed
-npm run build
+git pull
+docker compose down
+docker compose build
+docker compose up -d
 ```
 
-5. 使用 PM2 启动：
+执行完成后，以下数据必须仍然存在：
+
+- 用户数据
+- 池子
+- 资源
+- 关联关系
+
+不要执行下面命令，除非你明确要删除生产数据库：
 
 ```bash
-pm2 start npm --name resource-pool -- start
-pm2 save
-pm2 startup
+docker compose down -v
+docker volume rm postgres_data
 ```
 
-6. Nginx：
+## 生产环境更新代码
 
-将 `deploy/nginx.conf` 复制到 `/etc/nginx/sites-available/resource-pool`，替换域名后启用：
+标准更新流程：
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/resource-pool /etc/nginx/sites-enabled/resource-pool
-sudo nginx -t
-sudo systemctl reload nginx
+git pull
+docker compose build
+docker compose up -d
 ```
 
-7. HTTPS：
+由于 PostgreSQL 使用 Docker Volume：
+
+```text
+postgres_data
+```
+
+因此更新代码、重建镜像、重启容器都不会重建数据库。
+
+## 数据库备份与恢复
+
+数据库备份：
 
 ```bash
-sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+docker compose exec postgres pg_dump -U postgres resource_pool > backup.sql
 ```
+
+数据库恢复：
+
+```bash
+cat backup.sql | docker compose exec -T postgres psql -U postgres resource_pool
+```
+
+建议在每次生产更新前先备份数据库。
+
+## 最终验收标准
+
+场景 1：
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+结果：数据保留。
+
+场景 2：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+结果：数据保留。
+
+场景 3：
+
+```text
+VPS 重启
+Docker 自动启动
+网站自动恢复
+数据保留
+```
+
+结果：PostgreSQL 容器和 Next.js 容器自动恢复，用户、池子、资源、关联关系全部保留。
 
 ## 初始化 SQL
 
@@ -197,7 +294,7 @@ prisma/migrations/000001_init/migration.sql
 prisma/init.sql
 ```
 
-推荐生产环境使用：
+生产环境通过应用容器启动脚本自动执行：
 
 ```bash
 npx prisma migrate deploy
