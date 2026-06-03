@@ -18,9 +18,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <p className="text-sm text-muted-foreground">使用用户名和密码登录后台。</p>
         </div>
         <LoginForm nextPath={params.next ?? "/dashboard"} />
-        <div className="mt-5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+        {/* <div className="mt-5 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
           初始账号：admin / admin123456，查询账号：viewer / user123456
-        </div>
+        </div> */}
       </section>
     </main>
   );
