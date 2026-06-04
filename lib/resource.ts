@@ -89,6 +89,45 @@ export function normalizeItemData(
   return data;
 }
 
+function comparableValue(value: unknown) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  return String(value).trim();
+}
+
+export function assertNoDuplicateKeyFields(
+  fields: Array<Pick<PoolField, "fieldName" | "label" | "required" | "unique">>,
+  items: Array<Pick<PoolItem, "id" | "data">>,
+  data: Record<string, unknown>,
+  excludeItemId?: number
+) {
+  const fieldsToCheck = fields.filter((field) => field.required || field.unique);
+
+  for (const field of fieldsToCheck) {
+    const value = comparableValue(data[field.fieldName]);
+
+    if (!value) {
+      continue;
+    }
+
+    const duplicated = items.find((item) => {
+      const itemData = asRecord(item.data);
+      return item.id !== excludeItemId && comparableValue(itemData[field.fieldName]) === value;
+    });
+
+    if (duplicated) {
+      const label = field.label || field.fieldName;
+      throw new Error(`已有${label}：${value}`);
+    }
+  }
+}
+
 export function maskSensitiveValue(fieldName: string, value: unknown) {
   const lowerName = fieldName.toLowerCase();
 

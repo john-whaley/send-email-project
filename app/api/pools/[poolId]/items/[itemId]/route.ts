@@ -3,44 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { fail, getErrorMessage, ok } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { itemDataSchema } from "@/lib/validators";
-import { asRecord, getItemDisplayName, normalizeItemData } from "@/lib/resource";
+import { assertNoDuplicateKeyFields, getItemDisplayName, normalizeItemData } from "@/lib/resource";
 import { toInt } from "@/lib/utils";
 
 type RouteContext = {
   params: Promise<{ poolId: string; itemId: string }>;
 };
-
-async function assertUniqueFields(
-  poolId: number,
-  data: Record<string, unknown>,
-  excludeItemId: number
-) {
-  const pool = await prisma.pool.findUnique({
-    where: { id: poolId },
-    include: { fields: true, items: true }
-  });
-
-  if (!pool) {
-    throw new Error("池子不存在");
-  }
-
-  for (const field of pool.fields.filter((candidate) => candidate.unique)) {
-    const value = data[field.fieldName];
-
-    if (value === undefined || value === null || value === "") {
-      continue;
-    }
-
-    const duplicated = pool.items.find((item) => {
-      const itemData = asRecord(item.data);
-      return item.id !== excludeItemId && String(itemData[field.fieldName] ?? "") === String(value);
-    });
-
-    if (duplicated) {
-      throw new Error(`${field.label || field.fieldName} 已存在`);
-    }
-  }
-}
 
 export async function GET(_request: Request, context: RouteContext) {
   const user = await getCurrentUser();
@@ -91,7 +59,10 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const pool = await prisma.pool.findUnique({
       where: { id },
-      include: { fields: { orderBy: { sortOrder: "asc" } } }
+      include: {
+        fields: { orderBy: { sortOrder: "asc" } },
+        items: { select: { id: true, data: true } }
+      }
     });
 
     if (!pool) {
@@ -108,7 +79,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     const input = itemDataSchema.parse(await request.json());
     const data = normalizeItemData(pool.fields, input.data);
-    await assertUniqueFields(id, data, itemIdentifier);
+    assertNoDuplicateKeyFields(pool.fields, pool.items, data, itemIdentifier);
 
     const item = await prisma.poolItem.update({
       where: { id: itemIdentifier },

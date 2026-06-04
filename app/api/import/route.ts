@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import { prisma } from "@/lib/prisma";
 import { fail, getErrorMessage, ok } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import { normalizeItemData } from "@/lib/resource";
+import { assertNoDuplicateKeyFields, normalizeItemData } from "@/lib/resource";
 import { toInt } from "@/lib/utils";
 
 export async function POST(request: Request) {
@@ -32,7 +32,10 @@ export async function POST(request: Request) {
 
     const pool = await prisma.pool.findUnique({
       where: { id: poolId },
-      include: { fields: { orderBy: { sortOrder: "asc" } } }
+      include: {
+        fields: { orderBy: { sortOrder: "asc" } },
+        items: { select: { id: true, data: true } }
+      }
     });
 
     if (!pool) {
@@ -57,16 +60,19 @@ export async function POST(request: Request) {
 
     let imported = 0;
     const errors: Array<{ row: number; error: string }> = [];
+    const knownItems = [...pool.items];
 
     for (const [index, row] of rows.entries()) {
       try {
         const data = normalizeItemData(pool.fields, row);
-        await prisma.poolItem.create({
+        assertNoDuplicateKeyFields(pool.fields, knownItems, data);
+        const item = await prisma.poolItem.create({
           data: {
             poolId,
             data: data as Prisma.InputJsonValue
           }
         });
+        knownItems.push(item);
         imported += 1;
       } catch (error) {
         errors.push({
