@@ -29,6 +29,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-secret}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-replace-with-a-long-random-secret}
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Resource Pool Management System}
+      SEED_ADMIN_USERNAME: ${SEED_ADMIN_USERNAME:-admin}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      SEED_VIEWER_USERNAME: ${SEED_VIEWER_USERNAME:-viewer}
+      SEED_VIEWER_PASSWORD: ${SEED_VIEWER_PASSWORD:-}
     ports:
       - "3000:3000"
 

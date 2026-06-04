@@ -178,6 +178,13 @@ npx prisma migrate deploy
 docker compose exec app npm run db:seed
 ```
 
+如果修改了 `.env` 中的 seed 密码，请重建并重启容器，让 `app` 容器读取新的环境变量：
+
+```bash
+docker compose up -d --build
+docker compose exec app npm run db:seed
+```
+
 访问：
 
 ```text
