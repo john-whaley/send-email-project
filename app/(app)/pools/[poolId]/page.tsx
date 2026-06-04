@@ -24,7 +24,7 @@ export default async function PoolPage({ params }: PoolPageProps) {
     where: { id },
     include: {
       fields: { orderBy: { sortOrder: "asc" } },
-      items: { orderBy: { updatedAt: "desc" } }
+      items: { orderBy: { id: "asc" } }
     }
   });
 

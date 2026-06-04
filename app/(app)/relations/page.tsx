@@ -9,7 +9,7 @@ export default async function RelationsPage() {
   const pools = await prisma.pool.findMany({
     include: {
       fields: { orderBy: { sortOrder: "asc" } },
-      items: { orderBy: { updatedAt: "desc" } }
+      items: { orderBy: { id: "asc" } }
     },
     orderBy: { createdAt: "asc" }
   });

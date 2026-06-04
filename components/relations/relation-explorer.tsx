@@ -86,6 +86,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
   const [unrelatedQuery, setUnrelatedQuery] = useState("");
   const [relatedItems, setRelatedItems] = useState<RelatedItem[]>([]);
   const [unrelatedItems, setUnrelatedItems] = useState<UnrelatedItem[]>([]);
+  const [selectedRelatedIds, setSelectedRelatedIds] = useState<Set<number>>(new Set());
   const [selectedUnrelatedIds, setSelectedUnrelatedIds] = useState<Set<number>>(new Set());
   const [relatedPage, setRelatedPage] = useState(1);
   const [relatedPageSize, setRelatedPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -125,8 +126,11 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
     (normalizedUnrelatedPage - 1) * unrelatedPageSize,
     normalizedUnrelatedPage * unrelatedPageSize
   );
-  const selectedCount = selectedUnrelatedIds.size;
-  const pageSelected =
+  const selectedRelatedCount = selectedRelatedIds.size;
+  const relatedPageSelected =
+    pagedRelatedItems.length > 0 && pagedRelatedItems.every((item) => selectedRelatedIds.has(item.relationId));
+  const selectedUnrelatedCount = selectedUnrelatedIds.size;
+  const unrelatedPageSelected =
     pagedUnrelatedItems.length > 0 && pagedUnrelatedItems.every((item) => selectedUnrelatedIds.has(item.id));
 
   useEffect(() => {
@@ -146,6 +150,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
 
   useEffect(() => {
     setRelatedPage(1);
+    setSelectedRelatedIds(new Set());
   }, [sourcePoolId, sourceItemId, targetPoolId, relatedQuery, relatedPageSize]);
 
   useEffect(() => {
@@ -164,6 +169,15 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
       setUnrelatedPage(unrelatedPageCount);
     }
   }, [unrelatedPage, unrelatedPageCount]);
+
+  useEffect(() => {
+    setSelectedRelatedIds((current) => {
+      const existingIds = new Set(relatedItems.map((item) => item.relationId));
+      const next = new Set([...current].filter((id) => existingIds.has(id)));
+
+      return next.size === current.size ? current : next;
+    });
+  }, [relatedItems]);
 
   useEffect(() => {
     if (!sourcePoolId || !sourceItemId || !targetPoolId) {
@@ -250,6 +264,36 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
           next.add(item.id);
         } else {
           next.delete(item.id);
+        }
+      }
+
+      return next;
+    });
+  }
+
+  function toggleRelatedSelected(relationId: number, checked: boolean) {
+    setSelectedRelatedIds((current) => {
+      const next = new Set(current);
+
+      if (checked) {
+        next.add(relationId);
+      } else {
+        next.delete(relationId);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleRelatedPageSelected(checked: boolean) {
+    setSelectedRelatedIds((current) => {
+      const next = new Set(current);
+
+      for (const item of pagedRelatedItems) {
+        if (checked) {
+          next.add(item.relationId);
+        } else {
+          next.delete(item.relationId);
         }
       }
 
@@ -350,6 +394,22 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
     }
   }
 
+  function moveRelatedItemsToUnrelated(items: RelatedItem[]) {
+    setUnrelatedItems((current) => {
+      const existingIds = new Set(current.map((item) => item.id));
+      const movedItems = items
+        .filter((item) => !existingIds.has(item.id))
+        .map((item) => ({
+          id: item.id,
+          poolId: item.poolId,
+          data: item.data,
+          displayName: item.displayName
+        }));
+
+      return [...movedItems, ...current];
+    });
+  }
+
   async function handleDeleteRelation(item: RelatedItem) {
     if (!window.confirm(`确认删除 ${item.displayName} 的关联？`)) {
       return;
@@ -364,16 +424,46 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
     }
 
     setRelatedItems((current) => current.filter((candidate) => candidate.relationId !== item.relationId));
-    setUnrelatedItems((current) => [
-      {
-        id: item.id,
-        poolId: item.poolId,
-        data: item.data,
-        displayName: item.displayName
-      },
-      ...current
-    ]);
+    setSelectedRelatedIds((current) => {
+      const next = new Set(current);
+      next.delete(item.relationId);
+      return next;
+    });
+    moveRelatedItemsToUnrelated([item]);
     setMessage("关联已删除");
+    router.refresh();
+  }
+
+  async function handleBatchDeleteRelations() {
+    const selectedItems = relatedItems.filter((item) => selectedRelatedIds.has(item.relationId));
+
+    if (!selectedItems.length) {
+      setMessage("请先勾选要删除的关联");
+      return;
+    }
+
+    if (!window.confirm(`确认删除选中的 ${selectedItems.length} 条关联？资源本身不会删除。`)) {
+      return;
+    }
+
+    const relationIds = selectedItems.map((item) => item.relationId);
+    const response = await fetch("/api/relations", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: relationIds })
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setMessage(result.error ?? "批量删除关联失败");
+      return;
+    }
+
+    const deletedIds = new Set(relationIds);
+    setRelatedItems((current) => current.filter((item) => !deletedIds.has(item.relationId)));
+    setSelectedRelatedIds(new Set());
+    moveRelatedItemsToUnrelated(selectedItems);
+    setMessage(`已删除 ${result.deleted ?? selectedItems.length} 条关联`);
     router.refresh();
   }
 
@@ -456,6 +546,12 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
               />
               <span className="whitespace-nowrap text-muted-foreground">条</span>
             </div>
+            {canManage ? (
+              <Button variant="outline" onClick={handleBatchDeleteRelations} disabled={!selectedRelatedCount}>
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+                批量删除{selectedRelatedCount ? ` ${selectedRelatedCount}` : ""}
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -464,6 +560,16 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canManage ? (
+                    <TableHead className="w-12">
+                      <input
+                        type="checkbox"
+                        checked={relatedPageSelected}
+                        onChange={(event) => toggleRelatedPageSelected(event.target.checked)}
+                        aria-label="勾选当前页已关联对象"
+                      />
+                    </TableHead>
+                  ) : null}
                   {targetPool.fields.map((field) => (
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
@@ -474,6 +580,16 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
               <TableBody>
                 {pagedRelatedItems.map((item) => (
                   <TableRow key={item.relationId}>
+                    {canManage ? (
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedRelatedIds.has(item.relationId)}
+                          onChange={(event) => toggleRelatedSelected(item.relationId, event.target.checked)}
+                          aria-label={`勾选 ${item.displayName} 的关联`}
+                        />
+                      </TableCell>
+                    ) : null}
                     {targetPool.fields.map((field) => (
                       <TableCell key={field.id} className="max-w-64 truncate">
                         {renderValue(field, item.data)}
@@ -494,7 +610,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <span>
-                第 {normalizedRelatedPage} / {relatedPageCount} 页，每页 {relatedPageSize} 条
+                共 {filteredRelatedItems.length} 条，第 {normalizedRelatedPage} / {relatedPageCount} 页，每页 {relatedPageSize} 条
               </span>
               <div className="flex gap-2">
                 <Button
@@ -552,9 +668,9 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
               <span className="whitespace-nowrap text-muted-foreground">条</span>
             </div>
             {canManage ? (
-              <Button onClick={handleBatchLink} disabled={!selectedCount}>
+              <Button onClick={handleBatchLink} disabled={!selectedUnrelatedCount}>
                 <Link2 className="h-4 w-4" aria-hidden="true" />
-                批量关联{selectedCount ? ` ${selectedCount}` : ""}
+                批量关联{selectedUnrelatedCount ? ` ${selectedUnrelatedCount}` : ""}
               </Button>
             ) : null}
           </div>
@@ -569,7 +685,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
                     <TableHead className="w-12">
                       <input
                         type="checkbox"
-                        checked={pageSelected}
+                        checked={unrelatedPageSelected}
                         onChange={(event) => togglePageSelected(event.target.checked)}
                         aria-label="勾选当前页"
                       />
@@ -614,7 +730,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <span>
-                第 {normalizedUnrelatedPage} / {unrelatedPageCount} 页，每页 {unrelatedPageSize} 条
+                共 {filteredUnrelatedItems.length} 条，第 {normalizedUnrelatedPage} / {unrelatedPageCount} 页，每页 {unrelatedPageSize} 条
               </span>
               <div className="flex gap-2">
                 <Button

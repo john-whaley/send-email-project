@@ -102,7 +102,7 @@ export function DashboardPoolOverview({ pools }: { pools: DashboardPoolOverviewI
 
           <div className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
             <span>
-              第 {normalizedPage} / {pageCount} 页，每页 {pageSize} 条
+              共 {pools.length} 个，第 {normalizedPage} / {pageCount} 页，每页 {pageSize} 条
             </span>
             <div className="flex gap-2">
               <Button

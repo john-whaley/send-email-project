@@ -24,7 +24,8 @@ export const createPoolSchema = z.object({
   name: z.string().trim().min(1, "池子名称不能为空"),
   slug: z.string().trim().optional(),
   description: z.string().trim().optional().default(""),
-  fields: z.array(poolFieldSchema).min(1, "至少需要一个字段")
+  fields: z.array(poolFieldSchema).min(1, "至少需要一个字段"),
+  copyItemsFromPoolId: z.number().int().positive().optional()
 });
 
 export const updatePoolSchema = createPoolSchema.partial().extend({
@@ -33,6 +34,10 @@ export const updatePoolSchema = createPoolSchema.partial().extend({
 
 export const itemDataSchema = z.object({
   data: z.record(z.unknown())
+});
+
+export const bulkIdsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, "请至少选择一条数据")
 });
 
 export const createRelationSchema = z.object({

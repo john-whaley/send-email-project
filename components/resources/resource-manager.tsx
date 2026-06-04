@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowUpDown, ChevronLeft, ChevronRight, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +51,8 @@ type ResourceManagerProps = {
 
 const DEFAULT_PAGE_SIZE = 6;
 const MAX_PAGE_SIZE = 100;
+
+type SortMode = "ID_ASC" | "UPDATED_ASC" | "UPDATED_DESC";
 
 function createEmptyData(fields: ResourceField[]) {
   return fields.reduce<Record<string, unknown>>((acc, field) => {
@@ -119,6 +121,8 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [sortMode, setSortMode] = useState<SortMode>("ID_ASC");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [editingItem, setEditingItem] = useState<ResourceItem | null>(null);
   const [formData, setFormData] = useState<Record<string, unknown>>(createEmptyData(pool.fields));
   const [showForm, setShowForm] = useState(false);
@@ -131,23 +135,51 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return items;
-    return items.filter((item) => JSON.stringify(item.data).toLowerCase().includes(query));
-  }, [items, search]);
+    const matchedItems = query
+      ? items.filter((item) => JSON.stringify(item.data).toLowerCase().includes(query))
+      : items;
+
+    return [...matchedItems].sort((left, right) => {
+      if (sortMode === "UPDATED_ASC") {
+        return new Date(left.updatedAt).getTime() - new Date(right.updatedAt).getTime();
+      }
+
+      if (sortMode === "UPDATED_DESC") {
+        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+      }
+
+      return left.id - right.id;
+    });
+  }, [items, search, sortMode]);
 
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const normalizedPage = Math.min(page, pageCount);
   const pagedItems = filteredItems.slice((normalizedPage - 1) * pageSize, normalizedPage * pageSize);
+  const selectedCount = selectedIds.size;
+  const pageSelected = pagedItems.length > 0 && pagedItems.every((item) => selectedIds.has(item.id));
 
   useEffect(() => {
     setPage(1);
   }, [search, pageSize, pool.id]);
 
   useEffect(() => {
+    setSelectedIds(new Set());
+  }, [search, pool.id]);
+
+  useEffect(() => {
     if (page > pageCount) {
       setPage(pageCount);
     }
   }, [page, pageCount]);
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const existingIds = new Set(items.map((item) => item.id));
+      const next = new Set([...current].filter((id) => existingIds.has(id)));
+
+      return next.size === current.size ? current : next;
+    });
+  }, [items]);
 
   function startCreate() {
     setEditingItem(null);
@@ -174,6 +206,50 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
     setPageSize(normalizePageSize(Number(value)));
   }
 
+  function toggleUpdatedAtSort() {
+    setSortMode((current) => {
+      if (current === "UPDATED_DESC") {
+        return "UPDATED_ASC";
+      }
+
+      if (current === "UPDATED_ASC") {
+        return "ID_ASC";
+      }
+
+      return "UPDATED_DESC";
+    });
+  }
+
+  function toggleSelected(itemId: number, checked: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      if (checked) {
+        next.add(itemId);
+      } else {
+        next.delete(itemId);
+      }
+
+      return next;
+    });
+  }
+
+  function togglePageSelected(checked: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+
+      for (const item of pagedItems) {
+        if (checked) {
+          next.add(item.id);
+        } else {
+          next.delete(item.id);
+        }
+      }
+
+      return next;
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -197,9 +273,8 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
     setItems((current) =>
       editingItem
         ? current.map((item) => (item.id === savedItem.id ? savedItem : item))
-        : [savedItem, ...current]
+        : [...current, savedItem]
     );
-    setPage(1);
     setLoading(false);
     cancelEdit();
     router.refresh();
@@ -219,6 +294,36 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
     }
 
     setItems((current) => current.filter((candidate) => candidate.id !== item.id));
+    router.refresh();
+  }
+
+  async function handleBatchDelete() {
+    if (!selectedCount) {
+      setMessage("请先勾选要删除的资源");
+      return;
+    }
+
+    if (!window.confirm(`确认删除选中的 ${selectedCount} 条资源？相关关联关系也会一并删除。`)) {
+      return;
+    }
+
+    const ids = [...selectedIds];
+    const response = await fetch(`/api/pools/${pool.id}/items`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids })
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setMessage(result.error ?? "批量删除失败");
+      return;
+    }
+
+    const deletedIds = new Set(ids);
+    setItems((current) => current.filter((candidate) => !deletedIds.has(candidate.id)));
+    setSelectedIds(new Set());
+    setMessage(`已删除 ${result.deleted ?? selectedCount} 条资源`);
     router.refresh();
   }
 
@@ -248,10 +353,16 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
               <span className="whitespace-nowrap">条</span>
             </div>
             {canManage ? (
-              <Button onClick={startCreate}>
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                新增
-              </Button>
+              <>
+                <Button variant="outline" onClick={handleBatchDelete} disabled={!selectedCount}>
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  批量删除{selectedCount ? ` ${selectedCount}` : ""}
+                </Button>
+                <Button onClick={startCreate}>
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  新增
+                </Button>
+              </>
             ) : null}
           </div>
         </div>
@@ -263,16 +374,48 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
             <Table>
               <TableHeader>
                 <TableRow>
+                  {canManage ? (
+                    <TableHead className="w-12">
+                      <input
+                        type="checkbox"
+                        checked={pageSelected}
+                        onChange={(event) => togglePageSelected(event.target.checked)}
+                        aria-label="勾选当前页资源"
+                      />
+                    </TableHead>
+                  ) : null}
                   {pool.fields.map((field) => (
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
-                  <TableHead>更新时间</TableHead>
+                  <TableHead>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleUpdatedAtSort}
+                      className="-ml-3 h-8 px-2"
+                      title="点击按更新时间降序、升序、ID 顺序切换"
+                    >
+                      更新时间
+                      {sortMode === "UPDATED_DESC" ? " ↓" : sortMode === "UPDATED_ASC" ? " ↑" : ""}
+                      <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </TableHead>
                   {canManage ? <TableHead className="w-24 text-right">操作</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {pagedItems.map((item) => (
                   <TableRow key={item.id}>
+                    {canManage ? (
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(item.id)}
+                          onChange={(event) => toggleSelected(item.id, event.target.checked)}
+                          aria-label={`勾选 ${item.displayName}`}
+                        />
+                      </TableCell>
+                    ) : null}
                     {pool.fields.map((field) => (
                       <TableCell key={field.id} className="max-w-64 truncate">
                         {renderValue(field, item.data)}
@@ -298,7 +441,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <span>
-                共 {filteredItems.length} 条，第 {normalizedPage} / {pageCount} 页
+                共 {filteredItems.length} 条，第 {normalizedPage} / {pageCount} 页，每页 {pageSize} 条
               </span>
               <div className="flex gap-2">
                 <Button

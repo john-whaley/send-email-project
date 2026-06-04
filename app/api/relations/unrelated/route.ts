@@ -31,7 +31,7 @@ export async function GET(request: Request) {
       where: { id: targetPoolId },
       include: {
         fields: { orderBy: { sortOrder: "asc" } },
-        items: { orderBy: { updatedAt: "desc" } }
+        items: { orderBy: { id: "asc" } }
       }
     }),
     prisma.relation.findMany({

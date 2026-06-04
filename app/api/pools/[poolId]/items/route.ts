@@ -2,7 +2,7 @@ import { Prisma, Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fail, getErrorMessage, ok } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import { itemDataSchema } from "@/lib/validators";
+import { bulkIdsSchema, itemDataSchema } from "@/lib/validators";
 import { assertNoDuplicateKeyFields, getItemDisplayName, normalizeItemData } from "@/lib/resource";
 import { toInt } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ export async function GET(request: Request, context: RouteContext) {
     where: { id },
     include: {
       fields: { orderBy: { sortOrder: "asc" } },
-      items: { orderBy: { updatedAt: "desc" } }
+      items: { orderBy: { id: "asc" } }
     }
   });
 
@@ -101,6 +101,39 @@ export async function POST(request: Request, context: RouteContext) {
     });
 
     return ok({ item: { ...item, displayName: getItemDisplayName(item, pool.fields) } }, { status: 201 });
+  } catch (error) {
+    return fail(getErrorMessage(error));
+  }
+}
+
+export async function DELETE(request: Request, context: RouteContext) {
+  try {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return fail("未登录", 401);
+    }
+
+    if (user.role !== Role.ADMIN) {
+      return fail("无权限", 403);
+    }
+
+    const { poolId } = await context.params;
+    const id = toInt(poolId);
+
+    if (!id) {
+      return fail("无效池子 ID");
+    }
+
+    const input = bulkIdsSchema.parse(await request.json());
+    const deleted = await prisma.poolItem.deleteMany({
+      where: {
+        poolId: id,
+        id: { in: input.ids }
+      }
+    });
+
+    return ok({ success: true, deleted: deleted.count });
   } catch (error) {
     return fail(getErrorMessage(error));
   }

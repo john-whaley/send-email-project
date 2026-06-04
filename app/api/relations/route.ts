@@ -2,7 +2,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fail, getErrorMessage, ok } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import { createRelationSchema } from "@/lib/validators";
+import { bulkIdsSchema, createRelationSchema } from "@/lib/validators";
 import { getItemDisplayName } from "@/lib/resource";
 import { toInt } from "@/lib/utils";
 
@@ -147,6 +147,31 @@ export async function POST(request: Request) {
     });
 
     return ok({ relation }, { status: 201 });
+  } catch (error) {
+    return fail(getErrorMessage(error));
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return fail("未登录", 401);
+    }
+
+    if (user.role !== Role.ADMIN) {
+      return fail("无权限", 403);
+    }
+
+    const input = bulkIdsSchema.parse(await request.json());
+    const deleted = await prisma.relation.deleteMany({
+      where: {
+        id: { in: input.ids }
+      }
+    });
+
+    return ok({ success: true, deleted: deleted.count });
   } catch (error) {
     return fail(getErrorMessage(error));
   }
