@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 type AdminPool = ResourcePool & {
   itemCount: number;
@@ -25,6 +25,15 @@ export function AdminResources({ pools }: { pools: AdminPool[] }) {
   const [version, setVersion] = useState(0);
 
   const selectedPool = useMemo(() => pools.find((pool) => pool.id === selectedPoolId) ?? null, [pools, selectedPoolId]);
+  const poolOptions = useMemo(
+    () =>
+      pools.map((pool) => ({
+        value: String(pool.id),
+        label: pool.name,
+        searchText: `${pool.slug} ${pool.description ?? ""}`
+      })),
+    [pools]
+  );
 
   useEffect(() => {
     if (!selectedPoolId) {
@@ -92,13 +101,13 @@ export function AdminResources({ pools }: { pools: AdminPool[] }) {
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
           <div className="space-y-2">
             <Label htmlFor="resource-pool-select">选择池子</Label>
-            <Select id="resource-pool-select" value={String(selectedPoolId ?? "")} onChange={(event) => setSelectedPoolId(Number(event.target.value))}>
-              {pools.map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              id="resource-pool-select"
+              value={String(selectedPoolId ?? "")}
+              options={poolOptions}
+              placeholder="搜索池子"
+              onValueChange={(value) => setSelectedPoolId(Number(value))}
+            />
             <p className="text-xs text-muted-foreground">{loading ? "资源加载中..." : `${items.length} 条资源`}</p>
           </div>
 

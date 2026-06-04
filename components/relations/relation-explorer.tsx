@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Link2, Search, Trash2 } from "lucide-react";
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Link2, Search, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { ResourceField, ResourceItem, ResourcePool } from "@/components/resources/resource-manager";
 import { maskSensitiveValue } from "@/lib/resource";
@@ -102,6 +102,24 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
   const sourceItem = useMemo(
     () => sourcePool?.items.find((item) => item.id === sourceItemId) ?? null,
     [sourceItemId, sourcePool]
+  );
+  const poolOptions = useMemo(
+    () =>
+      pools.map((pool) => ({
+        value: String(pool.id),
+        label: pool.name,
+        searchText: `${pool.slug} ${pool.description ?? ""}`
+      })),
+    [pools]
+  );
+  const sourceItemOptions = useMemo(
+    () =>
+      (sourcePool?.items ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.displayName,
+        searchText: JSON.stringify(item.data)
+      })),
+    [sourcePool]
   );
 
   const filteredRelatedItems = useMemo(
@@ -410,6 +428,20 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
     });
   }
 
+  function handleReverseExplore(item: RelatedItem) {
+    if (!sourcePoolId) {
+      return;
+    }
+
+    const nextTargetPoolId = sourcePoolId;
+    setSourcePoolId(item.poolId);
+    setSourceItemId(item.id);
+    setTargetPoolId(nextTargetPoolId);
+    setRelatedQuery("");
+    setUnrelatedQuery("");
+    setMessage(`已切换为从 ${item.displayName} 反向查询`);
+  }
+
   async function handleDeleteRelation(item: RelatedItem) {
     if (!window.confirm(`确认删除 ${item.displayName} 的关联？`)) {
       return;
@@ -477,35 +509,37 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <Label htmlFor="source-pool">主池类型</Label>
-            <Select id="source-pool" value={String(sourcePoolId ?? "")} onChange={(event) => setSourcePoolId(Number(event.target.value))}>
-              {pools.map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              id="source-pool"
+              value={String(sourcePoolId ?? "")}
+              options={poolOptions}
+              placeholder="搜索主池类型"
+              onValueChange={(value) => setSourcePoolId(Number(value))}
+            />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="source-item">主对象</Label>
-            <Select id="source-item" value={String(sourceItemId ?? "")} onChange={(event) => setSourceItemId(Number(event.target.value))}>
-              {sourcePool?.items.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.displayName}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              id="source-item"
+              value={String(sourceItemId ?? "")}
+              options={sourceItemOptions}
+              placeholder="搜索主对象"
+              emptyText="当前池子没有匹配对象"
+              disabled={!sourcePool}
+              onValueChange={(value) => setSourceItemId(Number(value))}
+            />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="target-pool">副池类型</Label>
-            <Select id="target-pool" value={String(targetPoolId ?? "")} onChange={(event) => setTargetPoolId(Number(event.target.value))}>
-              {pools.map((pool) => (
-                <option key={pool.id} value={pool.id}>
-                  {pool.name}
-                </option>
-              ))}
-            </Select>
+            <SearchableSelect
+              id="target-pool"
+              value={String(targetPoolId ?? "")}
+              options={poolOptions}
+              placeholder="搜索副池类型"
+              onValueChange={(value) => setTargetPoolId(Number(value))}
+            />
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2 text-sm text-muted-foreground">
@@ -574,6 +608,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
                   <TableHead>建立时间</TableHead>
+                  <TableHead className="w-24 text-right">反查</TableHead>
                   {canManage ? <TableHead className="w-16 text-right">操作</TableHead> : null}
                 </TableRow>
               </TableHeader>
@@ -596,6 +631,12 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
                       </TableCell>
                     ))}
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => handleReverseExplore(item)} title="将该对象设为主对象并交换主副池">
+                        <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
+                        反查
+                      </Button>
+                    </TableCell>
                     {canManage ? (
                       <TableCell className="text-right">
                         <Button variant="ghost" size="icon" onClick={() => handleDeleteRelation(item)} title="删除关联" aria-label="删除关联">
