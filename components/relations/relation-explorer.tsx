@@ -135,7 +135,13 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
       return;
     }
 
-    setSourceItemId(sourcePool.items[0]?.id ?? null);
+    setSourceItemId((currentItemId) => {
+      if (currentItemId && sourcePool.items.some((item) => item.id === currentItemId)) {
+        return currentItemId;
+      }
+
+      return sourcePool.items[0]?.id ?? null;
+    });
   }, [sourcePoolId, sourcePool]);
 
   useEffect(() => {
