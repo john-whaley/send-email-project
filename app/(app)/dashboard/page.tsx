@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { ArrowRight, Boxes, Database, GitBranch, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { DashboardPoolOverview } from "@/components/dashboard/pool-overview";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { getItemDisplayName } from "@/lib/resource";
@@ -36,6 +36,14 @@ export default async function DashboardPage() {
     { label: "关联", value: relationCount, icon: GitBranch },
     { label: "用户", value: userCount, icon: Users }
   ];
+  const poolOverviewItems = pools.map((pool) => ({
+    id: pool.id,
+    name: pool.name,
+    description: pool.description,
+    fieldCount: pool.fields.length,
+    itemCount: pool._count.items,
+    relationCount: pool._count.sourceRelations + pool._count.targetRelations
+  }));
 
   return (
     <>
@@ -70,35 +78,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="mt-6 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">资源池</h2>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/admin/pools">管理</Link>
-            </Button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {pools.map((pool) => (
-              <Card key={pool.id}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between gap-2">
-                    <span>{pool.name}</span>
-                    <Badge variant="muted">{pool._count.items} 条</Badge>
-                  </CardTitle>
-                  <CardDescription>{pool.description || "未填写描述"}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
-                    字段 {pool.fields.length} 个，关联 {pool._count.sourceRelations + pool._count.targetRelations} 条
-                  </span>
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/pools/${pool.id}`}>打开</Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+        <DashboardPoolOverview pools={poolOverviewItems} />
 
         <div className="space-y-3">
           <h2 className="text-base font-semibold">最近更新</h2>

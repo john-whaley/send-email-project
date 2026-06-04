@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CopyPlus, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CopyPlus, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,17 @@ const FIELD_TYPES: Array<{ value: FieldType; label: string }> = [
   { value: "PHONE", label: "手机号" },
   { value: "JSON", label: "JSON" }
 ];
+
+const DEFAULT_PAGE_SIZE = 6;
+const MAX_PAGE_SIZE = 100;
+
+function normalizePageSize(value: number) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_PAGE_SIZE;
+  }
+
+  return Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(value)));
+}
 
 type AdminPool = {
   id: number;
@@ -96,8 +107,23 @@ export function PoolAdmin({ initialPools }: { initialPools: AdminPool[] }) {
   const [form, setForm] = useState<PoolForm>(emptyForm);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const editingPool = useMemo(() => pools.find((pool) => pool.id === form.id), [pools, form.id]);
+  const pageCount = Math.max(1, Math.ceil(pools.length / pageSize));
+  const normalizedPage = Math.min(page, pageCount);
+  const pagedPools = pools.slice((normalizedPage - 1) * pageSize, normalizedPage * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
+
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
 
   function startCreate() {
     setForm(emptyForm());
@@ -187,6 +213,9 @@ export function PoolAdmin({ initialPools }: { initialPools: AdminPool[] }) {
     setPools((current) =>
       form.id ? current.map((pool) => (pool.id === savedPool.id ? savedPool : pool)) : [...current, savedPool]
     );
+    if (!form.id) {
+      setPage(Math.max(1, Math.ceil((pools.length + 1) / pageSize)));
+    }
     setForm(toEditableForm(savedPool));
     setLoading(false);
     router.refresh();
@@ -215,50 +244,98 @@ export function PoolAdmin({ initialPools }: { initialPools: AdminPool[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_460px]">
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">已有池子</h2>
-          <Button onClick={startCreate}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            新建池子
-          </Button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold">已有池子</h2>
+            <p className="text-sm text-muted-foreground">{pools.length} 个池子</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 text-sm">
+              <Label htmlFor="pool-page-size" className="whitespace-nowrap text-muted-foreground">
+                每页
+              </Label>
+              <Input
+                id="pool-page-size"
+                type="number"
+                min={1}
+                max={MAX_PAGE_SIZE}
+                value={pageSize}
+                onChange={(event) => setPageSize(normalizePageSize(Number(event.target.value)))}
+                className="h-9 w-20"
+              />
+              <span className="whitespace-nowrap text-muted-foreground">条</span>
+            </div>
+            <Button onClick={startCreate}>
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              新建池子
+            </Button>
+          </div>
         </div>
 
         {pools.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {pools.map((pool) => (
-              <Card key={pool.id} className={editingPool?.id === pool.id ? "ring-2 ring-ring" : undefined}>
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between gap-2">
-                    <span>{pool.name}</span>
-                    <Badge variant="muted">{pool._count.items} 条资源</Badge>
-                  </CardTitle>
-                  <CardDescription>{pool.description || "未填写描述"}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    {pool.fields.map((field) => (
-                      <Badge key={field.id} variant={field.required ? "default" : "outline"}>
-                        {field.label || field.fieldName}
-                      </Badge>
-                    ))}
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" size="sm" onClick={() => duplicatePool(pool)}>
-                      <CopyPlus className="h-4 w-4" aria-hidden="true" />
-                      复制
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => startEdit(pool)}>
-                      <Pencil className="h-4 w-4" aria-hidden="true" />
-                      编辑
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => handleDelete(pool)}>
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      删除
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              {pagedPools.map((pool) => (
+                <Card key={pool.id} className={editingPool?.id === pool.id ? "ring-2 ring-ring" : undefined}>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between gap-2">
+                      <span>{pool.name}</span>
+                      <Badge variant="muted">{pool._count.items} 条资源</Badge>
+                    </CardTitle>
+                    <CardDescription>{pool.description || "未填写描述"}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {pool.fields.map((field) => (
+                        <Badge key={field.id} variant={field.required ? "default" : "outline"}>
+                          {field.label || field.fieldName}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={() => duplicatePool(pool)}>
+                        <CopyPlus className="h-4 w-4" aria-hidden="true" />
+                        复制
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => startEdit(pool)}>
+                        <Pencil className="h-4 w-4" aria-hidden="true" />
+                        编辑
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(pool)}>
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        删除
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                第 {normalizedPage} / {pageCount} 页，每页 {pageSize} 条
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  disabled={normalizedPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  disabled={normalizedPage >= pageCount}
+                >
+                  下一页
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
           </div>
         ) : (
           <EmptyState title="还没有池子" description="从右侧表单创建第一个动态资源池。" />

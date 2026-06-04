@@ -38,7 +38,16 @@ type UnrelatedItem = {
   updatedAt?: string;
 };
 
-const PAGE_SIZE = 10;
+const DEFAULT_PAGE_SIZE = 6;
+const MAX_PAGE_SIZE = 100;
+
+function normalizePageSize(value: number) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_PAGE_SIZE;
+  }
+
+  return Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(value)));
+}
 
 function renderValue(field: ResourceField, data: Record<string, unknown>) {
   const value = maskSensitiveValue(field.fieldName, data[field.fieldName]);
@@ -78,7 +87,10 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
   const [relatedItems, setRelatedItems] = useState<RelatedItem[]>([]);
   const [unrelatedItems, setUnrelatedItems] = useState<UnrelatedItem[]>([]);
   const [selectedUnrelatedIds, setSelectedUnrelatedIds] = useState<Set<number>>(new Set());
+  const [relatedPage, setRelatedPage] = useState(1);
+  const [relatedPageSize, setRelatedPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [unrelatedPage, setUnrelatedPage] = useState(1);
+  const [unrelatedPageSize, setUnrelatedPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [loadingRelated, setLoadingRelated] = useState(false);
   const [loadingUnrelated, setLoadingUnrelated] = useState(false);
   const [message, setMessage] = useState("");
@@ -101,11 +113,17 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
     [unrelatedItems, unrelatedQuery]
   );
 
-  const unrelatedPageCount = Math.max(1, Math.ceil(filteredUnrelatedItems.length / PAGE_SIZE));
+  const relatedPageCount = Math.max(1, Math.ceil(filteredRelatedItems.length / relatedPageSize));
+  const normalizedRelatedPage = Math.min(relatedPage, relatedPageCount);
+  const pagedRelatedItems = filteredRelatedItems.slice(
+    (normalizedRelatedPage - 1) * relatedPageSize,
+    normalizedRelatedPage * relatedPageSize
+  );
+  const unrelatedPageCount = Math.max(1, Math.ceil(filteredUnrelatedItems.length / unrelatedPageSize));
   const normalizedUnrelatedPage = Math.min(unrelatedPage, unrelatedPageCount);
   const pagedUnrelatedItems = filteredUnrelatedItems.slice(
-    (normalizedUnrelatedPage - 1) * PAGE_SIZE,
-    normalizedUnrelatedPage * PAGE_SIZE
+    (normalizedUnrelatedPage - 1) * unrelatedPageSize,
+    normalizedUnrelatedPage * unrelatedPageSize
   );
   const selectedCount = selectedUnrelatedIds.size;
   const pageSelected =
@@ -121,9 +139,25 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
   }, [sourcePoolId, sourcePool]);
 
   useEffect(() => {
+    setRelatedPage(1);
+  }, [sourcePoolId, sourceItemId, targetPoolId, relatedQuery, relatedPageSize]);
+
+  useEffect(() => {
     setUnrelatedPage(1);
     setSelectedUnrelatedIds(new Set());
-  }, [sourcePoolId, sourceItemId, targetPoolId, unrelatedQuery]);
+  }, [sourcePoolId, sourceItemId, targetPoolId, unrelatedQuery, unrelatedPageSize]);
+
+  useEffect(() => {
+    if (relatedPage > relatedPageCount) {
+      setRelatedPage(relatedPageCount);
+    }
+  }, [relatedPage, relatedPageCount]);
+
+  useEffect(() => {
+    if (unrelatedPage > unrelatedPageCount) {
+      setUnrelatedPage(unrelatedPageCount);
+    }
+  }, [unrelatedPage, unrelatedPageCount]);
 
   useEffect(() => {
     if (!sourcePoolId || !sourceItemId || !targetPoolId) {
@@ -396,13 +430,30 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
               {loadingRelated ? "查询中..." : `${filteredRelatedItems.length} 条已关联对象`}
             </p>
           </div>
-          <div className="relative w-full sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <Input value={relatedQuery} onChange={(event) => setRelatedQuery(event.target.value)} placeholder="搜索已关联对象" className="pl-8" />
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <div className="relative w-full sm:w-72">
+              <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              <Input value={relatedQuery} onChange={(event) => setRelatedQuery(event.target.value)} placeholder="搜索已关联对象" className="pl-8" />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Label htmlFor="related-page-size" className="whitespace-nowrap text-muted-foreground">
+                每页
+              </Label>
+              <Input
+                id="related-page-size"
+                type="number"
+                min={1}
+                max={MAX_PAGE_SIZE}
+                value={relatedPageSize}
+                onChange={(event) => setRelatedPageSize(normalizePageSize(Number(event.target.value)))}
+                className="h-9 w-20"
+              />
+              <span className="whitespace-nowrap text-muted-foreground">条</span>
+            </div>
           </div>
         </div>
 
-        {targetPool && filteredRelatedItems.length ? (
+        {targetPool && pagedRelatedItems.length ? (
           <div className="rounded-lg border bg-card">
             <Table>
               <TableHeader>
@@ -415,7 +466,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRelatedItems.map((item) => (
+                {pagedRelatedItems.map((item) => (
                   <TableRow key={item.relationId}>
                     {targetPool.fields.map((field) => (
                       <TableCell key={field.id} className="max-w-64 truncate">
@@ -434,6 +485,32 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
                 ))}
               </TableBody>
             </Table>
+
+            <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                第 {normalizedRelatedPage} / {relatedPageCount} 页，每页 {relatedPageSize} 条
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRelatedPage((current) => Math.max(1, current - 1))}
+                  disabled={normalizedRelatedPage <= 1}
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRelatedPage((current) => Math.min(relatedPageCount, current + 1))}
+                  disabled={normalizedRelatedPage >= relatedPageCount}
+                >
+                  下一页
+                  <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
+            </div>
           </div>
         ) : (
           <EmptyState title="没有已关联对象" description="可以从下方未关联对象中快速建立关联。" />
@@ -452,6 +529,21 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
             <div className="relative w-full sm:w-72">
               <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <Input value={unrelatedQuery} onChange={(event) => setUnrelatedQuery(event.target.value)} placeholder="搜索未关联对象" className="pl-8" />
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <Label htmlFor="unrelated-page-size" className="whitespace-nowrap text-muted-foreground">
+                每页
+              </Label>
+              <Input
+                id="unrelated-page-size"
+                type="number"
+                min={1}
+                max={MAX_PAGE_SIZE}
+                value={unrelatedPageSize}
+                onChange={(event) => setUnrelatedPageSize(normalizePageSize(Number(event.target.value)))}
+                className="h-9 w-20"
+              />
+              <span className="whitespace-nowrap text-muted-foreground">条</span>
             </div>
             {canManage ? (
               <Button onClick={handleBatchLink} disabled={!selectedCount}>
@@ -516,7 +608,7 @@ export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[];
 
             <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
               <span>
-                第 {normalizedUnrelatedPage} / {unrelatedPageCount} 页，每页 {PAGE_SIZE} 条
+                第 {normalizedUnrelatedPage} / {unrelatedPageCount} 页，每页 {unrelatedPageSize} 条
               </span>
               <div className="flex gap-2">
                 <Button
