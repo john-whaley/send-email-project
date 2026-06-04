@@ -115,6 +115,10 @@ NEXTAUTH_SECRET="replace-with-a-long-random-secret"
 POSTGRES_USER="postgres"
 POSTGRES_PASSWORD="replace-db-password"
 POSTGRES_DB="resource_pool"
+SEED_ADMIN_USERNAME="admin"
+SEED_ADMIN_PASSWORD="replace-with-a-strong-admin-password"
+SEED_VIEWER_USERNAME="viewer"
+SEED_VIEWER_PASSWORD="replace-with-a-strong-viewer-password"
 ```
 
 启动：

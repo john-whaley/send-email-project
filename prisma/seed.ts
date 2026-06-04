@@ -91,13 +91,22 @@ async function createItem(poolId: number, data: Record<string, unknown>) {
 }
 
 async function main() {
-  const passwordHash = await bcrypt.hash("admin123456", 10);
-  const userPasswordHash = await bcrypt.hash("user123456", 10);
+  const adminUsername = process.env.SEED_ADMIN_USERNAME || "admin";
+  const viewerUsername = process.env.SEED_VIEWER_USERNAME || "viewer";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  const viewerPassword = process.env.SEED_VIEWER_PASSWORD;
+
+  if (!adminPassword || !viewerPassword) {
+    throw new Error("Please set SEED_ADMIN_PASSWORD and SEED_VIEWER_PASSWORD before running prisma db seed.");
+  }
+
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
+  const userPasswordHash = await bcrypt.hash(viewerPassword, 10);
 
   const admin = await prisma.user.upsert({
-    where: { username: "admin" },
+    where: { username: adminUsername },
     create: {
-      username: "admin",
+      username: adminUsername,
       passwordHash,
       role: Role.ADMIN
     },
@@ -108,9 +117,9 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { username: "viewer" },
+    where: { username: viewerUsername },
     create: {
-      username: "viewer",
+      username: viewerUsername,
       passwordHash: userPasswordHash,
       role: Role.USER
     },

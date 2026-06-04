@@ -67,11 +67,13 @@ npm run dev
 http://localhost:3000
 ```
 
-初始账号：
+首次写入种子用户前，请在 `.env` 中设置管理员和查询用户密码：
 
 ```text
-管理员：admin / admin123456
-查询用户：viewer / user123456
+SEED_ADMIN_USERNAME="admin"
+SEED_ADMIN_PASSWORD="replace-with-a-strong-admin-password"
+SEED_VIEWER_USERNAME="viewer"
+SEED_VIEWER_PASSWORD="replace-with-a-strong-viewer-password"
 ```
 
 ## 主要页面
