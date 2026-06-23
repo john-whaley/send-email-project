@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, ChevronLeft, ChevronRight, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeftRight, ArrowUpDown, ChevronLeft, ChevronRight, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -400,7 +401,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                       <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </TableHead>
-                  {canManage ? <TableHead className="w-24 text-right">操作</TableHead> : null}
+                  <TableHead className={canManage ? "w-32 text-right" : "w-16 text-right"}>操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -422,18 +423,25 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                       </TableCell>
                     ))}
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.updatedAt)}</TableCell>
-                    {canManage ? (
-                      <TableCell>
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => startEdit(item)} title="编辑" aria-label="编辑">
-                            <Pencil className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(item)} title="删除" aria-label="删除">
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    ) : null}
+                    <TableCell>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" title="关联查询" aria-label={`关联查询 ${item.displayName}`} asChild>
+                          <Link href={`/relations?sourcePoolId=${pool.id}&sourceItemId=${item.id}`}>
+                            <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
+                          </Link>
+                        </Button>
+                        {canManage ? (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => startEdit(item)} title="编辑" aria-label="编辑">
+                              <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(item)} title="删除" aria-label="删除">
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

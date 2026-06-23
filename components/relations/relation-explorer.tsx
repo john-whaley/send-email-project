@@ -41,6 +41,14 @@ type UnrelatedItem = {
 const DEFAULT_PAGE_SIZE = 6;
 const MAX_PAGE_SIZE = 100;
 
+type RelationExplorerProps = {
+  pools: PoolWithItems[];
+  canManage: boolean;
+  initialSourcePoolId?: number;
+  initialSourceItemId?: number;
+  initialTargetPoolId?: number;
+};
+
 function normalizePageSize(value: number) {
   if (!Number.isFinite(value)) {
     return DEFAULT_PAGE_SIZE;
@@ -77,11 +85,44 @@ function itemMatchesQuery(item: Pick<RelatedItem | UnrelatedItem, "displayName" 
   return `${item.displayName} ${JSON.stringify(item.data)}`.toLowerCase().includes(normalizedQuery);
 }
 
-export function RelationExplorer({ pools, canManage }: { pools: PoolWithItems[]; canManage: boolean }) {
+function findInitialSourcePool(pools: PoolWithItems[], initialSourcePoolId?: number) {
+  return pools.find((pool) => pool.id === initialSourcePoolId) ?? pools[0] ?? null;
+}
+
+function findDefaultTargetPool(pools: PoolWithItems[], sourcePoolId: number | null, initialTargetPoolId?: number) {
+  const explicitPool = pools.find((pool) => pool.id === initialTargetPoolId);
+
+  if (explicitPool) {
+    return explicitPool;
+  }
+
+  const emailPool = pools.find((pool) => {
+    const searchableText = `${pool.name} ${pool.slug}`.toLowerCase();
+    return searchableText.includes("邮箱") || searchableText.includes("email") || searchableText.includes("mail");
+  });
+
+  return emailPool ?? pools.find((pool) => pool.id !== sourcePoolId) ?? pools[0] ?? null;
+}
+
+function findInitialSourceItem(sourcePool: PoolWithItems | null, initialSourceItemId?: number) {
+  return sourcePool?.items.find((item) => item.id === initialSourceItemId)?.id ?? sourcePool?.items[0]?.id ?? null;
+}
+
+export function RelationExplorer({
+  pools,
+  canManage,
+  initialSourcePoolId,
+  initialSourceItemId,
+  initialTargetPoolId
+}: RelationExplorerProps) {
   const router = useRouter();
-  const [sourcePoolId, setSourcePoolId] = useState<number | null>(pools[0]?.id ?? null);
-  const [sourceItemId, setSourceItemId] = useState<number | null>(pools[0]?.items[0]?.id ?? null);
-  const [targetPoolId, setTargetPoolId] = useState<number | null>(pools[1]?.id ?? pools[0]?.id ?? null);
+  const initialSourcePool = findInitialSourcePool(pools, initialSourcePoolId);
+  const initialTargetPool = findDefaultTargetPool(pools, initialSourcePool?.id ?? null, initialTargetPoolId);
+  const [sourcePoolId, setSourcePoolId] = useState<number | null>(initialSourcePool?.id ?? null);
+  const [sourceItemId, setSourceItemId] = useState<number | null>(
+    findInitialSourceItem(initialSourcePool, initialSourceItemId)
+  );
+  const [targetPoolId, setTargetPoolId] = useState<number | null>(initialTargetPool?.id ?? null);
   const [relatedQuery, setRelatedQuery] = useState("");
   const [unrelatedQuery, setUnrelatedQuery] = useState("");
   const [relatedItems, setRelatedItems] = useState<RelatedItem[]>([]);

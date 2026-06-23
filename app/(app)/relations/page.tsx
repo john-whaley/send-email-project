@@ -4,7 +4,16 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getItemDisplayName } from "@/lib/resource";
 
-export default async function RelationsPage() {
+type RelationsPageProps = {
+  searchParams?: Promise<{
+    sourcePoolId?: string;
+    sourceItemId?: string;
+    targetPoolId?: string;
+  }>;
+};
+
+export default async function RelationsPage({ searchParams }: RelationsPageProps) {
+  const params = await searchParams;
   const user = await getCurrentUser();
   const pools = await prisma.pool.findMany({
     include: {
@@ -22,6 +31,9 @@ export default async function RelationsPage() {
       />
       <RelationExplorer
         canManage={user?.role === "ADMIN"}
+        initialSourcePoolId={params?.sourcePoolId ? Number(params.sourcePoolId) : undefined}
+        initialSourceItemId={params?.sourceItemId ? Number(params.sourceItemId) : undefined}
+        initialTargetPoolId={params?.targetPoolId ? Number(params.targetPoolId) : undefined}
         pools={pools.map((pool) => ({
           id: pool.id,
           name: pool.name,

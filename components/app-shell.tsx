@@ -1,9 +1,16 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Boxes, GitBranch, LayoutDashboard, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  POOL_ORDER_CHANGED_EVENT,
+  POOL_ORDER_STORAGE_KEY,
+  orderPoolsByStoredOrder,
+  parseStoredPoolOrder
+} from "@/lib/pool-order";
 import { GlobalSearch } from "@/components/global-search";
 import { LogoutButton } from "@/components/logout-button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +32,22 @@ type AppShellProps = {
 
 export function AppShell({ user, pools, children }: AppShellProps) {
   const pathname = usePathname();
+  const [poolOrder, setPoolOrder] = useState<number[]>([]);
+  const orderedPools = useMemo(() => orderPoolsByStoredOrder(pools, poolOrder), [poolOrder, pools]);
+
+  useEffect(() => {
+    function syncPoolOrder() {
+      setPoolOrder(parseStoredPoolOrder(window.localStorage.getItem(POOL_ORDER_STORAGE_KEY)));
+    }
+
+    syncPoolOrder();
+    window.addEventListener("storage", syncPoolOrder);
+    window.addEventListener(POOL_ORDER_CHANGED_EVENT, syncPoolOrder);
+    return () => {
+      window.removeEventListener("storage", syncPoolOrder);
+      window.removeEventListener(POOL_ORDER_CHANGED_EVENT, syncPoolOrder);
+    };
+  }, []);
 
   const baseLinks = [
     { href: "/dashboard", label: "总览", icon: LayoutDashboard },
@@ -70,7 +93,7 @@ export function AppShell({ user, pools, children }: AppShellProps) {
                 </Link>
               );
             })}
-            {pools.map((pool) => (
+            {orderedPools.map((pool) => (
               <Link
                 key={pool.id}
                 href={`/pools/${pool.id}`}
