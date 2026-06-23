@@ -2,18 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  POOL_ORDER_CHANGED_EVENT,
-  POOL_ORDER_STORAGE_KEY,
-  orderPoolsByStoredOrder,
-  parseStoredPoolOrder
-} from "@/lib/pool-order";
+import { POOL_ORDER_CHANGED_EVENT, POOL_ORDER_STORAGE_KEY, orderPoolsByStoredOrder, parseStoredPoolOrder } from "@/lib/pool-order";
 
 const DEFAULT_PAGE_SIZE = 6;
 const MAX_PAGE_SIZE = 100;
@@ -46,7 +41,17 @@ export function DashboardPoolOverview({ pools }: { pools: DashboardPoolOverviewI
   const pagedPools = orderedPools.slice((normalizedPage - 1) * pageSize, normalizedPage * pageSize);
 
   useEffect(() => {
-    setPoolOrder(parseStoredPoolOrder(window.localStorage.getItem(POOL_ORDER_STORAGE_KEY)));
+    function syncPoolOrder() {
+      setPoolOrder(parseStoredPoolOrder(window.localStorage.getItem(POOL_ORDER_STORAGE_KEY)));
+    }
+
+    syncPoolOrder();
+    window.addEventListener("storage", syncPoolOrder);
+    window.addEventListener(POOL_ORDER_CHANGED_EVENT, syncPoolOrder);
+    return () => {
+      window.removeEventListener("storage", syncPoolOrder);
+      window.removeEventListener(POOL_ORDER_CHANGED_EVENT, syncPoolOrder);
+    };
   }, []);
 
   useEffect(() => {
@@ -59,29 +64,9 @@ export function DashboardPoolOverview({ pools }: { pools: DashboardPoolOverviewI
       }
 
       window.localStorage.setItem(POOL_ORDER_STORAGE_KEY, JSON.stringify(next));
-      window.dispatchEvent(new Event(POOL_ORDER_CHANGED_EVENT));
       return next;
     });
   }, [pools]);
-
-  function movePool(poolId: number, direction: -1 | 1) {
-    setPoolOrder((current) => {
-      const baseOrder = orderedPools.map((pool) => pool.id);
-      const order = baseOrder.length ? baseOrder : current;
-      const currentIndex = order.indexOf(poolId);
-      const nextIndex = currentIndex + direction;
-
-      if (currentIndex < 0 || nextIndex < 0 || nextIndex >= order.length) {
-        return current;
-      }
-
-      const next = [...order];
-      [next[currentIndex], next[nextIndex]] = [next[nextIndex], next[currentIndex]];
-      window.localStorage.setItem(POOL_ORDER_STORAGE_KEY, JSON.stringify(next));
-      window.dispatchEvent(new Event(POOL_ORDER_CHANGED_EVENT));
-      return next;
-    });
-  }
 
   useEffect(() => {
     setPage(1);
@@ -130,31 +115,7 @@ export function DashboardPoolOverview({ pools }: { pools: DashboardPoolOverviewI
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between gap-2">
                     <span>{pool.name}</span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => movePool(pool.id, -1)}
-                        disabled={orderedPools[0]?.id === pool.id}
-                        title="上移"
-                        aria-label={`上移 ${pool.name}`}
-                      >
-                        <ChevronUp className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => movePool(pool.id, 1)}
-                        disabled={orderedPools[orderedPools.length - 1]?.id === pool.id}
-                        title="下移"
-                        aria-label={`下移 ${pool.name}`}
-                      >
-                        <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                      <Badge variant="muted">{pool.itemCount} 条</Badge>
-                    </div>
+                    <Badge variant="muted">{pool.itemCount} 条</Badge>
                   </CardTitle>
                   <CardDescription>{pool.description || "未填写描述"}</CardDescription>
                 </CardHeader>

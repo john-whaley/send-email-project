@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Boxes, GitBranch, LayoutDashboard, ShieldCheck } from "lucide-react";
@@ -30,9 +31,15 @@ type AppShellProps = {
   children: React.ReactNode;
 };
 
+const LONG_PRESS_DELAY_MS = 150;
+
 export function AppShell({ user, pools, children }: AppShellProps) {
   const pathname = usePathname();
   const [poolOrder, setPoolOrder] = useState<number[]>([]);
+  const [draggingPoolId, setDraggingPoolId] = useState<number | null>(null);
+  const [pressedPoolId, setPressedPoolId] = useState<number | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const isDraggingRef = useRef(false);
   const orderedPools = useMemo(() => orderPoolsByStoredOrder(pools, poolOrder), [poolOrder, pools]);
 
   useEffect(() => {
@@ -48,6 +55,68 @@ export function AppShell({ user, pools, children }: AppShellProps) {
       window.removeEventListener(POOL_ORDER_CHANGED_EVENT, syncPoolOrder);
     };
   }, []);
+
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function savePoolOrder(nextOrder: number[]) {
+    window.localStorage.setItem(POOL_ORDER_STORAGE_KEY, JSON.stringify(nextOrder));
+    window.dispatchEvent(new Event(POOL_ORDER_CHANGED_EVENT));
+  }
+
+  function normalizeCurrentPoolOrder() {
+    return orderedPools.map((pool) => pool.id);
+  }
+
+  function handlePoolPointerDown(poolId: number) {
+    clearLongPressTimer();
+    isDraggingRef.current = false;
+    setPressedPoolId(poolId);
+    longPressTimerRef.current = window.setTimeout(() => {
+      isDraggingRef.current = true;
+      setDraggingPoolId(poolId);
+    }, LONG_PRESS_DELAY_MS);
+  }
+
+  function handlePoolPointerEnd() {
+    clearLongPressTimer();
+    setPressedPoolId(null);
+    setDraggingPoolId(null);
+
+    window.setTimeout(() => {
+      isDraggingRef.current = false;
+    }, 0);
+  }
+
+  function handlePoolClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (isDraggingRef.current) {
+      event.preventDefault();
+    }
+  }
+
+  function moveDraggingPool(targetPoolId: number) {
+    if (!draggingPoolId || draggingPoolId === targetPoolId) {
+      return;
+    }
+
+    const currentOrder = normalizeCurrentPoolOrder();
+    const fromIndex = currentOrder.indexOf(draggingPoolId);
+    const toIndex = currentOrder.indexOf(targetPoolId);
+
+    if (fromIndex < 0 || toIndex < 0) {
+      return;
+    }
+
+    const nextOrder = [...currentOrder];
+    const [movedId] = nextOrder.splice(fromIndex, 1);
+    nextOrder.splice(toIndex, 0, movedId);
+    setPoolOrder(nextOrder);
+    savePoolOrder(nextOrder);
+  }
 
   const baseLinks = [
     { href: "/dashboard", label: "总览", icon: LayoutDashboard },
@@ -97,10 +166,26 @@ export function AppShell({ user, pools, children }: AppShellProps) {
               <Link
                 key={pool.id}
                 href={`/pools/${pool.id}`}
+                draggable={false}
+                onClick={handlePoolClick}
+                onPointerDown={() => handlePoolPointerDown(pool.id)}
+                onPointerUp={handlePoolPointerEnd}
+                onPointerCancel={handlePoolPointerEnd}
+                onPointerLeave={() => {
+                  if (!draggingPoolId) {
+                    clearLongPressTimer();
+                    setPressedPoolId(null);
+                  }
+                }}
+                onPointerEnter={() => moveDraggingPool(pool.id)}
                 className={cn(
-                  "inline-flex h-9 shrink-0 items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                  pathname === `/pools/${pool.id}` && "bg-muted text-foreground"
+                  "inline-flex h-9 shrink-0 select-none items-center rounded-md px-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-grab active:cursor-grabbing",
+                  pathname === `/pools/${pool.id}` && "bg-muted text-foreground",
+                  pressedPoolId === pool.id && !draggingPoolId && "bg-muted/70 text-foreground",
+                  draggingPoolId === pool.id && "cursor-grabbing bg-primary text-primary-foreground shadow-sm",
+                  draggingPoolId && draggingPoolId !== pool.id && "cursor-grab"
                 )}
+                aria-grabbed={draggingPoolId === pool.id}
               >
                 {pool.name}
               </Link>
