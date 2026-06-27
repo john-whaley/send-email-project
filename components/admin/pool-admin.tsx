@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageJump } from "@/components/ui/page-jump";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ResourceField } from "@/components/resources/resource-manager";
@@ -340,6 +341,7 @@ export function PoolAdmin({ initialPools }: { initialPools: AdminPool[] }) {
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   上一页
                 </Button>
+                <PageJump page={normalizedPage} pageCount={pageCount} onPageChange={setPage} ariaLabel="跳转池子管理页码" />
                 <Button
                   variant="outline"
                   size="sm"

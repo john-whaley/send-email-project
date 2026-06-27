@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageJump } from "@/components/ui/page-jump";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -428,7 +429,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                   {pool.fields.map((field) => (
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
-                  <TableHead className="w-24 text-right">注释总数</TableHead>
+                  <TableHead className="w-24">注释总数</TableHead>
                   <TableHead>
                     <Button
                       variant="ghost"
@@ -442,7 +443,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                       <ArrowUpDown className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </TableHead>
-                  <TableHead className={canManage ? "w-32 text-right" : "w-16 text-right"}>操作</TableHead>
+                  <TableHead className={canManage ? "w-32" : "w-16"}>操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -463,11 +464,12 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                         {renderValue(field, item.data)}
                       </TableCell>
                     ))}
-                    <TableCell className="text-right">
+                    <TableCell>
                       <Button
-                        variant="outline"
+                        variant={(item.noteCount ?? 0) > 0 ? "outline" : "ghost"}
                         size="sm"
                         onClick={() => openNoteDialog(item)}
+                        disabled={(item.noteCount ?? 0) <= 0}
                         title={`查看 ${item.displayName} 的关联注释`}
                       >
                         <FileText className="h-4 w-4" aria-hidden="true" />
@@ -476,7 +478,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.updatedAt)}</TableCell>
                     <TableCell>
-                      <div className="flex justify-end gap-1">
+                      <div className="flex justify-center gap-1">
                         <Button variant="ghost" size="icon" title="关联查询" aria-label={`关联查询 ${item.displayName}`} asChild>
                           <Link href={`/relations?sourcePoolId=${pool.id}&sourceItemId=${item.id}`}>
                             <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
@@ -513,6 +515,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   上一页
                 </Button>
+                <PageJump page={normalizedPage} pageCount={pageCount} onPageChange={setPage} ariaLabel="跳转资源页码" />
                 <Button
                   variant="outline"
                   size="sm"
@@ -606,7 +609,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
 
       {noteDialogItem ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-3xl rounded-lg border bg-card p-4 shadow-lg">
+          <div className="flex max-h-[66vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border bg-card p-4 shadow-lg">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-semibold">关联注释</h3>
@@ -625,7 +628,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
               </p>
             ) : null}
 
-            <div className="mt-4 max-h-[60vh] overflow-auto rounded-lg border">
+            <div className="mt-4 min-h-0 flex-1 overflow-auto rounded-lg border">
               {loadingNotes ? (
                 <p className="px-4 py-8 text-center text-sm text-muted-foreground">读取中...</p>
               ) : relationNotes.length ? (
@@ -635,7 +638,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                       <TableHead className="w-56">关联对象</TableHead>
                       <TableHead>注释</TableHead>
                       <TableHead className="w-36">建立时间</TableHead>
-                      <TableHead className="w-20 text-right">查询</TableHead>
+                      <TableHead className="w-20">查询</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -653,7 +656,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                         <TableCell className="whitespace-nowrap text-muted-foreground">
                           {formatDateTime(relationNote.createdAt)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell>
                           <Button variant="ghost" size="icon" title="关联查询" aria-label="关联查询" asChild>
                             <Link href={relationNote.exploreUrl}>
                               <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageJump } from "@/components/ui/page-jump";
 import { POOL_ORDER_CHANGED_EVENT, POOL_ORDER_STORAGE_KEY, orderPoolsByStoredOrder, parseStoredPoolOrder } from "@/lib/pool-order";
 
 const DEFAULT_PAGE_SIZE = 6;
@@ -141,12 +142,13 @@ export function DashboardPoolOverview({ pools }: { pools: DashboardPoolOverviewI
                 size="sm"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
                 disabled={normalizedPage <= 1}
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                上一页
-              </Button>
-              <Button
-                variant="outline"
+                >
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                  上一页
+                </Button>
+                <PageJump page={normalizedPage} pageCount={pageCount} onPageChange={setPage} ariaLabel="跳转资源池页码" />
+                <Button
+                  variant="outline"
                 size="sm"
                 onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
                 disabled={normalizedPage >= pageCount}

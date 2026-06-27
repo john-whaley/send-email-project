@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageJump } from "@/components/ui/page-jump";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
@@ -712,8 +713,8 @@ export function RelationExplorer({
                   ))}
                   <TableHead className="w-48">注释</TableHead>
                   <TableHead>建立时间</TableHead>
-                  <TableHead className="w-24 text-right">反查</TableHead>
-                  {canManage ? <TableHead className="w-16 text-right">操作</TableHead> : null}
+                  <TableHead className="w-24">反查</TableHead>
+                  {canManage ? <TableHead className="w-16">操作</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -738,21 +739,21 @@ export function RelationExplorer({
                       <button
                         type="button"
                         onClick={() => openNoteEditor(item)}
-                        className="block w-full truncate rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-muted"
+                        className="block w-full truncate rounded-md px-2 py-1 text-center text-sm transition-colors hover:bg-muted"
                         title={item.note?.trim() || "编辑注释"}
                       >
                         {renderNotePreview(item.note)}
                       </button>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell>
                       <Button variant="outline" size="sm" onClick={() => handleReverseExplore(item)} title="将该对象设为主对象并交换主副池">
                         <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
                         反查
                       </Button>
                     </TableCell>
                     {canManage ? (
-                      <TableCell className="text-right">
+                      <TableCell>
                         <Button variant="ghost" size="icon" onClick={() => handleDeleteRelation(item)} title="删除关联" aria-label="删除关联">
                           <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
@@ -777,6 +778,12 @@ export function RelationExplorer({
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   上一页
                 </Button>
+                <PageJump
+                  page={normalizedRelatedPage}
+                  pageCount={relatedPageCount}
+                  onPageChange={setRelatedPage}
+                  ariaLabel="跳转已关联对象页码"
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -849,7 +856,7 @@ export function RelationExplorer({
                   {targetPool.fields.map((field) => (
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
-                  {canManage ? <TableHead className="w-24 text-right">操作</TableHead> : null}
+                  {canManage ? <TableHead className="w-24">操作</TableHead> : null}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -871,7 +878,7 @@ export function RelationExplorer({
                       </TableCell>
                     ))}
                     {canManage ? (
-                      <TableCell className="text-right">
+                      <TableCell>
                         <Button variant="outline" size="sm" onClick={() => handleLinkOne(item)}>
                           <Link2 className="h-4 w-4" aria-hidden="true" />
                           关联
@@ -897,6 +904,12 @@ export function RelationExplorer({
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" />
                   上一页
                 </Button>
+                <PageJump
+                  page={normalizedUnrelatedPage}
+                  pageCount={unrelatedPageCount}
+                  onPageChange={setUnrelatedPage}
+                  ariaLabel="跳转未关联对象页码"
+                />
                 <Button
                   variant="outline"
                   size="sm"
@@ -916,7 +929,7 @@ export function RelationExplorer({
 
       {editingNoteItem ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-lg border bg-card p-4 shadow-lg">
+          <div className="max-h-[66vh] w-full max-w-lg overflow-auto rounded-lg border bg-card p-4 shadow-lg">
             <div className="space-y-1">
               <h3 className="text-base font-semibold">编辑关联注释</h3>
               <p className="text-sm text-muted-foreground">
