@@ -32,6 +32,29 @@ export default async function PoolPage({ params }: PoolPageProps) {
     notFound();
   }
 
+  const notedRelations = await prisma.relation.findMany({
+    where: {
+      note: { not: null },
+      OR: [{ sourcePoolId: pool.id }, { targetPoolId: pool.id }]
+    },
+    select: { sourceItemId: true, targetItemId: true, sourcePoolId: true, targetPoolId: true, note: true }
+  });
+  const noteCounts = new Map<number, number>();
+
+  for (const relation of notedRelations) {
+    if (!relation.note?.trim()) {
+      continue;
+    }
+
+    if (relation.sourcePoolId === pool.id) {
+      noteCounts.set(relation.sourceItemId, (noteCounts.get(relation.sourceItemId) ?? 0) + 1);
+    }
+
+    if (relation.targetPoolId === pool.id) {
+      noteCounts.set(relation.targetItemId, (noteCounts.get(relation.targetItemId) ?? 0) + 1);
+    }
+  }
+
   const serializedPool = {
     id: pool.id,
     name: pool.name,
@@ -54,7 +77,8 @@ export default async function PoolPage({ params }: PoolPageProps) {
     data: item.data as Record<string, unknown>,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
-    displayName: getItemDisplayName(item, pool.fields)
+    displayName: getItemDisplayName(item, pool.fields),
+    noteCount: noteCounts.get(item.id) ?? 0
   }));
 
   return (

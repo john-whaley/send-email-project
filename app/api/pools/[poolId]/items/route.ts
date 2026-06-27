@@ -39,6 +39,29 @@ export async function GET(request: Request, context: RouteContext) {
     return fail("池子不存在", 404);
   }
 
+  const notedRelations = await prisma.relation.findMany({
+    where: {
+      note: { not: null },
+      OR: [{ sourcePoolId: pool.id }, { targetPoolId: pool.id }]
+    },
+    select: { sourceItemId: true, targetItemId: true, sourcePoolId: true, targetPoolId: true, note: true }
+  });
+  const noteCounts = new Map<number, number>();
+
+  for (const relation of notedRelations) {
+    if (!relation.note?.trim()) {
+      continue;
+    }
+
+    if (relation.sourcePoolId === pool.id) {
+      noteCounts.set(relation.sourceItemId, (noteCounts.get(relation.sourceItemId) ?? 0) + 1);
+    }
+
+    if (relation.targetPoolId === pool.id) {
+      noteCounts.set(relation.targetItemId, (noteCounts.get(relation.targetItemId) ?? 0) + 1);
+    }
+  }
+
   const items = query
     ? pool.items.filter((item) => JSON.stringify(item.data).toLowerCase().includes(query))
     : pool.items;
@@ -53,7 +76,8 @@ export async function GET(request: Request, context: RouteContext) {
     },
     items: items.map((item) => ({
       ...item,
-      displayName: getItemDisplayName(item, pool.fields)
+      displayName: getItemDisplayName(item, pool.fields),
+      noteCount: noteCounts.get(item.id) ?? 0
     }))
   });
 }

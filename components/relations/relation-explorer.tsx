@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import type { ResourceField, ResourceItem, ResourcePool } from "@/components/resources/resource-manager";
 import { maskSensitiveValue } from "@/lib/resource";
 import { formatDateTime } from "@/lib/utils";
@@ -108,6 +109,16 @@ function findInitialSourceItem(sourcePool: PoolWithItems | null, initialSourceIt
   return sourcePool?.items.find((item) => item.id === initialSourceItemId)?.id ?? sourcePool?.items[0]?.id ?? null;
 }
 
+function renderNotePreview(note?: string | null) {
+  const normalizedNote = note?.trim();
+
+  if (!normalizedNote) {
+    return <span className="text-muted-foreground">未填写</span>;
+  }
+
+  return <span title={normalizedNote}>{normalizedNote}</span>;
+}
+
 export function RelationExplorer({
   pools,
   canManage,
@@ -137,6 +148,9 @@ export function RelationExplorer({
   const [loadingUnrelated, setLoadingUnrelated] = useState(false);
   const [message, setMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [editingNoteItem, setEditingNoteItem] = useState<RelatedItem | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   const sourcePool = useMemo(() => pools.find((pool) => pool.id === sourcePoolId) ?? null, [pools, sourcePoolId]);
   const targetPool = useMemo(() => pools.find((pool) => pool.id === targetPoolId) ?? null, [pools, targetPoolId]);
@@ -483,6 +497,54 @@ export function RelationExplorer({
     setMessage(`已切换为从 ${item.displayName} 反向查询`);
   }
 
+  function openNoteEditor(item: RelatedItem) {
+    setEditingNoteItem(item);
+    setNoteDraft(item.note ?? "");
+    setMessage("");
+  }
+
+  function closeNoteEditor() {
+    setEditingNoteItem(null);
+    setNoteDraft("");
+    setSavingNote(false);
+  }
+
+  async function handleSaveNote() {
+    if (!editingNoteItem) {
+      return;
+    }
+
+    setSavingNote(true);
+    setMessage("");
+    const response = await fetch(`/api/relations/${editingNoteItem.relationId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: noteDraft })
+    });
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setSavingNote(false);
+      setMessage(result.error ?? "保存注释失败");
+      return;
+    }
+
+    const savedNote = result.relation?.note ?? null;
+    setRelatedItems((current) =>
+      current.map((item) =>
+        item.relationId === editingNoteItem.relationId
+          ? {
+              ...item,
+              note: savedNote
+            }
+          : item
+      )
+    );
+    closeNoteEditor();
+    setMessage("注释已保存");
+    router.refresh();
+  }
+
   async function handleDeleteRelation(item: RelatedItem) {
     if (!window.confirm(`确认删除 ${item.displayName} 的关联？`)) {
       return;
@@ -648,6 +710,7 @@ export function RelationExplorer({
                   {targetPool.fields.map((field) => (
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
+                  <TableHead className="w-48">注释</TableHead>
                   <TableHead>建立时间</TableHead>
                   <TableHead className="w-24 text-right">反查</TableHead>
                   {canManage ? <TableHead className="w-16 text-right">操作</TableHead> : null}
@@ -671,6 +734,16 @@ export function RelationExplorer({
                         {renderValue(field, item.data)}
                       </TableCell>
                     ))}
+                    <TableCell className="max-w-48 truncate">
+                      <button
+                        type="button"
+                        onClick={() => openNoteEditor(item)}
+                        className="block w-full truncate rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-muted"
+                        title={item.note?.trim() || "编辑注释"}
+                      >
+                        {renderNotePreview(item.note)}
+                      </button>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="outline" size="sm" onClick={() => handleReverseExplore(item)} title="将该对象设为主对象并交换主副池">
@@ -840,6 +913,39 @@ export function RelationExplorer({
           <EmptyState title="没有未关联对象" description="当前副池中没有可关联到主对象的剩余资源。" />
         )}
       </section>
+
+      {editingNoteItem ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-lg border bg-card p-4 shadow-lg">
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold">编辑关联注释</h3>
+              <p className="text-sm text-muted-foreground">
+                {sourcePool?.name ?? "主池"}-{sourceItem?.displayName ?? "主对象"} 关联到 {editingNoteItem.poolName}-
+                {editingNoteItem.displayName}
+              </p>
+            </div>
+            <div className="mt-4 space-y-2">
+              <Label htmlFor="relation-note">注释</Label>
+              <Textarea
+                id="relation-note"
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                className="min-h-32"
+                maxLength={2000}
+              />
+              <p className="text-xs text-muted-foreground">{noteDraft.length} / 2000</p>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={closeNoteEditor} disabled={savingNote}>
+                取消
+              </Button>
+              <Button onClick={handleSaveNote} disabled={savingNote}>
+                {savingNote ? "保存中..." : "保存"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

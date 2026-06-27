@@ -47,3 +47,7 @@ export const createRelationSchema = z.object({
   targetItemId: z.number().int().positive(),
   note: z.string().trim().optional()
 });
+
+export const updateRelationNoteSchema = z.object({
+  note: z.string().trim().max(2000, "注释不能超过 2000 个字符").optional().default("")
+});

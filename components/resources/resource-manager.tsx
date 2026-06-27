@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeftRight, ArrowUpDown, ChevronLeft, ChevronRight, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowLeftRight, ArrowUpDown, ChevronLeft, ChevronRight, FileText, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,12 +42,22 @@ export type ResourceItem = {
   createdAt: string;
   updatedAt: string;
   displayName: string;
+  noteCount?: number;
 };
 
 type ResourceManagerProps = {
   pool: ResourcePool;
   initialItems: ResourceItem[];
   canManage: boolean;
+};
+
+type ResourceRelationNote = {
+  relationId: number;
+  note: string;
+  createdAt: string;
+  current: { poolId: number; poolName: string; itemId: number; displayName: string };
+  related: { poolId: number; poolName: string; itemId: number; displayName: string };
+  exploreUrl: string;
 };
 
 const DEFAULT_PAGE_SIZE = 6;
@@ -129,6 +139,10 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
   const [showForm, setShowForm] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [noteDialogItem, setNoteDialogItem] = useState<ResourceItem | null>(null);
+  const [relationNotes, setRelationNotes] = useState<ResourceRelationNote[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+  const [noteDialogMessage, setNoteDialogMessage] = useState("");
 
   useEffect(() => {
     setItems(initialItems);
@@ -273,8 +287,8 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
     const savedItem = result.item as ResourceItem;
     setItems((current) =>
       editingItem
-        ? current.map((item) => (item.id === savedItem.id ? savedItem : item))
-        : [...current, savedItem]
+        ? current.map((item) => (item.id === savedItem.id ? { ...savedItem, noteCount: item.noteCount ?? 0 } : item))
+        : [...current, { ...savedItem, noteCount: savedItem.noteCount ?? 0 }]
     );
     setLoading(false);
     cancelEdit();
@@ -326,6 +340,32 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
     setSelectedIds(new Set());
     setMessage(`已删除 ${result.deleted ?? selectedCount} 条资源`);
     router.refresh();
+  }
+
+  async function openNoteDialog(item: ResourceItem) {
+    setNoteDialogItem(item);
+    setRelationNotes([]);
+    setNoteDialogMessage("");
+    setLoadingNotes(true);
+
+    const response = await fetch(`/api/pools/${pool.id}/items/${item.id}/notes`);
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      setNoteDialogMessage(result.error ?? "读取注释失败");
+      setLoadingNotes(false);
+      return;
+    }
+
+    setRelationNotes(result.notes ?? []);
+    setLoadingNotes(false);
+  }
+
+  function closeNoteDialog() {
+    setNoteDialogItem(null);
+    setRelationNotes([]);
+    setLoadingNotes(false);
+    setNoteDialogMessage("");
   }
 
   return (
@@ -388,6 +428,7 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                   {pool.fields.map((field) => (
                     <TableHead key={field.id}>{field.label || field.fieldName}</TableHead>
                   ))}
+                  <TableHead className="w-24 text-right">注释总数</TableHead>
                   <TableHead>
                     <Button
                       variant="ghost"
@@ -422,6 +463,17 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
                         {renderValue(field, item.data)}
                       </TableCell>
                     ))}
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openNoteDialog(item)}
+                        title={`查看 ${item.displayName} 的关联注释`}
+                      >
+                        <FileText className="h-4 w-4" aria-hidden="true" />
+                        {item.noteCount ?? 0}
+                      </Button>
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(item.updatedAt)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-1">
@@ -550,6 +602,74 @@ export function ResourceManager({ pool, initialItems, canManage }: ResourceManag
             </CardContent>
           </Card>
         </aside>
+      ) : null}
+
+      {noteDialogItem ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-lg border bg-card p-4 shadow-lg">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold">关联注释</h3>
+                <p className="text-sm text-muted-foreground">
+                  {pool.name}-{noteDialogItem.displayName}，共 {relationNotes.length} 条注释
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={closeNoteDialog} title="关闭" aria-label="关闭注释列表">
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+
+            {noteDialogMessage ? (
+              <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {noteDialogMessage}
+              </p>
+            ) : null}
+
+            <div className="mt-4 max-h-[60vh] overflow-auto rounded-lg border">
+              {loadingNotes ? (
+                <p className="px-4 py-8 text-center text-sm text-muted-foreground">读取中...</p>
+              ) : relationNotes.length ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-56">关联对象</TableHead>
+                      <TableHead>注释</TableHead>
+                      <TableHead className="w-36">建立时间</TableHead>
+                      <TableHead className="w-20 text-right">查询</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {relationNotes.map((relationNote) => (
+                      <TableRow key={relationNote.relationId}>
+                        <TableCell className="max-w-56">
+                          <p className="truncate text-sm font-medium" title={relationNote.related.displayName}>
+                            {relationNote.related.displayName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{relationNote.related.poolName}</p>
+                        </TableCell>
+                        <TableCell className="max-w-md truncate" title={relationNote.note}>
+                          {relationNote.note}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {formatDateTime(relationNote.createdAt)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" title="关联查询" aria-label="关联查询" asChild>
+                            <Link href={relationNote.exploreUrl}>
+                              <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="px-4 py-8 text-center text-sm text-muted-foreground">暂无关联注释</p>
+              )}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
